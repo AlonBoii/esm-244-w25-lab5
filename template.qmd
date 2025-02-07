@@ -1,7 +1,16 @@
 ---
-title: 'ESM 244 Lab 5 Key: Clustering'
+title: 'ESM 244 Lab 5: Clustering'
+author:
+  - Alon Robbins
+format:
+  html:
+    code-fold: show
+    embed-resources: true
+    toc: true
 execute:
-  eval: false
+  eval: true
+  warning: false
+  message: false
 ---
 
 
@@ -73,8 +82,9 @@ temp<-read_tsv(here::here('data','seeds_dataset.txt'),
 
 In your console use `summary(temp)` to examine the structure of the data. Does anything look strange?
 
+minimum values in columns are -999.000 which are probably NAs
 
-
+variety should be a factor or real names
 
 
 Hopefully you caught two pieces that need to be fixed. First, why are there so many -999 minimum values? That is an oddly specific number. Those are how `NAs` were defined in the data. We need to let R know that those numbers are actually not numbers at all. Second, variety is really a factor, not a number so let's change it to the names of the species.
@@ -82,8 +92,8 @@ Hopefully you caught two pieces that need to be fixed. First, why are there so m
 ```{r}
 seeds_df <- read_tsv(here::here('data','seeds_dataset.txt'),
                      col_names = FALSE,
-                     na = '-999') %>%
-  setNames(var_names) %>%
+                     na = '-999') |>
+  setNames(var_names) |>
   mutate(variety = case_when(variety == 1 ~ 'Kama',
                              variety == 2 ~ 'Rosa',
                              variety == 3 ~ 'Canadian',
@@ -98,9 +108,34 @@ I want you to create three exploratory visuals to help you understand the data a
 
 1) Make a histogram of the distribution of each numeric variable (hint: pivot the data longer first and use facet_grid as a layer in your ggplot)
 
+```{r}
+seeds_df_long <- seeds_df |>
+  pivot_longer(cols = -variety) 
+ggplot(seeds_df_long, aes(x = value)) +
+  geom_histogram() +
+  facet_grid(variety ~ name, scales = "free")
+```
+
+
 2) A scatter plot of with kernel area on the x-axis and asymmetry coefficient on the y-axis. Use color, shape, or any other aesthetic to  help you see potential groupings
 
+```{r}
+scatter <- ggplot(seeds_df, aes(x = a, y = asym, color = variety, shape = variety)) +
+  geom_point()
+
+scatter
+```
+
+
 3) A scatter plot with length of kernel groove on the x-axis and width of kernel on y-axis.
+
+```{r}
+scatter1 <- ggplot(seeds_df, aes(x = l_k, y = w_k, color = variety, shape = variety)) +
+  geom_point()
+
+scatter1
+```
+
 
 You can always make more if you want. 
 
@@ -118,6 +153,17 @@ Make two separate dataframes where one is the complete cases dataframe and the o
 
 Why would we want two separate dataframes instead of doing it one pipe? Why should we scale the data before going to kmeans-clustering?
 
+```{r}
+seeds_complete <- seeds_df |> ## the dropped na df
+  drop_na() 
+
+seeds_scale <- seeds_complete |> ### the complete with scaled data 
+  select(-variety) |>
+  scale()
+
+
+```
+
 
 
 
@@ -126,6 +172,7 @@ Why would we want two separate dataframes instead of doing it one pipe? Why shou
 First let's make a 'knee' plot to see the performance of kmeans with different number of clusters. Describe what each of the arguments do in the following code chunk. Interpret the results of the graph by making a figure caption in the code chunk.
 
 ```{r}
+#| fig-cap: Based on this knee graph we would select 3 groups to initiate a k-means cluster because the kink in the graph is most visible at 3 clusters, after 3 groups there isn't much change
 
 fviz_nbclust(seeds_scale, FUNcluster = kmeans, method = 'wss', k.max = 10)
 
@@ -157,12 +204,19 @@ The `nbclust` package runs k-means under the hood, but doesn't provide a usuable
 ```{r}
 
 set.seed(10101)
-seeds_km <- kmeans(xxx,yyy,zzz) # kmeans specifying 3 groups to start
+seeds_km <- kmeans(seeds_scale, centers = 3, nstart = 25) # kmeans specifying 3 groups to start
+
 ```
 
 
 Examine the output of the kmeans object. Which column contains the classfiication? Join the cluster labels to the ***non***-scaled data.
 
+```{r}
+seeds_cl <- data.frame(seeds_complete,
+                       cluster_no = factor(seeds_km$cluster))
+
+
+```
 
 
 Now make a ggplot of of area on the x-axis, asymmetric coefficient on the y-axis, color by the cluster numbers from kmeans, and use shape for the variety column.
@@ -171,6 +225,10 @@ Now make a ggplot of of area on the x-axis, asymmetric coefficient on the y-axis
 ### On your own:
 ### Plot area and asymmetric index, and include cluster number and variety for comparison:
 
+ggplot(seeds_cl) +
+  geom_point(aes( x = a, y = asym, color = cluster_no, shape = variety),
+             size = 2) +
+  theme_minimal()
 
 
 ```
@@ -179,6 +237,15 @@ What do we see from this graph?
 
 
 Can you make a table to show the comparison between the variety and defined clusters?
+
+```{r}
+#| tbl-cap: Contiency table for the grouping of kmeans and the varietals of kernels
+
+seeds_cl |>
+  select(variety, cluster_no) |>
+  table() |>
+  knitr::kable()
+```
 
 
 
@@ -205,16 +272,30 @@ wb_env <- read_csv(here::here("data","wb_env.csv"))
 
 Write pseducode for what we will need to do for heirarchal clustering
 
+1. slice the top 20 emitters 
 
+2. drop NAs (note: we don't have any in this case)
+
+3. select only the numeric 
+
+4. scale the data
+
+5. get the distance of the scale data 
+
+6. run hclust
+
+7. linkages either single or complete
+
+8. make our dendrograms
 
 
 ## Wrangle the data
 
 ```{r}
-#| eval: false
 
 # Only keep top 20 greenhouse gas emitters (for simplifying visualization here...)
-wb_ghg_20 <- wb_env %>% 
+wb_ghg_20 <- wb_env |>
+  slice_max(ghg, n = 20) 
   
 
 ```
@@ -223,7 +304,9 @@ wb_ghg_20 <- wb_env %>%
 
 ```{r}
 # Scale the numeric variables (columns 3:7)
-wb_scaled <- wb_ghg_20 %>% 
+wb_scaled <- wb_ghg_20 |>
+  select(-c(name,region)) |>
+  scale()
 
 
 rownames(wb_scaled) <- wb_ghg_20$name
@@ -236,6 +319,8 @@ rownames(wb_scaled) <- wb_ghg_20$name
 Use the `stats::dist()` function to find the Euclidean distance in multivariate space between the different observations (countries):
 
 ```{r}
+
+euc_distance <- dist(wb_scaled, method = "euclidean")
 
 ```
 
@@ -253,7 +338,7 @@ Here, let's use complete linkage (recall from lecture: clusters are merged by th
 hc_complete <- hclust(euc_distance, method = "complete" )
 
 # Plot it
-p_complete<-ggdendrogram(hc_complete, 
+p_complete <- ggdendrogram(hc_complete, 
              rotate = TRUE) +
   theme_minimal() +
   labs(x = "Country")
@@ -265,8 +350,14 @@ p_complete<-ggdendrogram(hc_complete,
 Let's update the linkage to single linkage (recall from lecture: this means that clusters are merged by the *smallest* distance between observations in separate clusters):
 
 ```{r}
-
 # Make single cluster here and plot it
+
+hc_single <- hclust(euc_distance, method = "single")
+
+p_single <- ggdendrogram(hc_single, 
+                         rotate = T) +
+  theme_minimal() +
+  labs(x = "Country")
 
 ```
 
@@ -275,6 +366,9 @@ Let's update the linkage to single linkage (recall from lecture: this means that
 Use patchwork to compare the two outputs and add a descriptive figure caption to the joined plot.
 
 ```{r}
+library(patchwork)
+
+p_complete + p_single + plot_layout(ncol = 2)
 
 ```
 
